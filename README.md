@@ -6,7 +6,7 @@ I used it to quickly and easily generate a bunch of traffic on a site.
 
 ## TODO's
 
-[ ] Multiple URLs
-[ ] Muiltiple Payloads
-[ ] Attempt Delays
-[ ] Better logging
+- [ ] Multiple URLs
+- [ ] Muiltiple Payloads
+- [ ] Attempt Delays
+- [ ] Better logging
