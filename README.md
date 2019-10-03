@@ -8,7 +8,8 @@ I used it to quickly and easily generate a bunch of traffic on a site.
 
 To use Mjolnir is quite easy.
 
-Using postman you can `POST` a JSON payload to the `/api/Hammer` endpoint:
+1. Create your own `local.settings.json` file. There is a simple example file called `local.settings.example.json` 
+2. Using [Postman](https://www.getpostman.com/) (or your favorite REST Client) you can `POST` a JSON payload to the `/api/Hammer` endpoint:
 
 ```
 {
