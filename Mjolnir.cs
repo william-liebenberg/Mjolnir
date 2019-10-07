@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Microsoft.Azure.WebJobs;
@@ -22,6 +23,12 @@ namespace Mjolnir
 		public string TargetUrl { get; set; }
 		public string Cookies { get; set; }
 		public string NailId { get; set; }
+	}
+
+	public class NailResult
+	{
+		public string NailId { get; set; }
+		public string DurationMs { get; set; }
 	}
 
 	public class Mjolnir
@@ -46,19 +53,19 @@ namespace Mjolnir
 			string instanceId = await durableClient.StartNewAsync(nameof(HammerAllNailsAtOnce), nail);
 
 			log.LogInformation($"Started orchestration with ID = '{instanceId}'.");
-			return await durableClient.WaitForCompletionOrCreateCheckStatusResponseAsync(req, instanceId);
+			return durableClient.CreateCheckStatusResponse(req, instanceId);
 		}
 
 		[FunctionName(nameof(HammerAllNailsAtOnce))]
-		public async Task HammerAllNailsAtOnce(
+		public async Task<List<NailResult>> HammerAllNailsAtOnce(
 			[OrchestrationTrigger] DurableOrchestrationContext context)
 		{
 			var nail = context.GetInput<Nail>();
-			var tasks = new List<Task>();
+			var tasks = new List<Task<NailResult>>();
 
 			for (var n = 0; n < nail.Attempts; n++)
 			{
-				Task t = context.CallActivityAsync(nameof(HammerNail), new NailActivity()
+				Task<NailResult> t = context.CallActivityAsync<NailResult>(nameof(HammerNail), new NailActivity()
 				{
 					TargetUrl = nail.TargetUrl,
 					Cookies = nail.Cookies,
@@ -68,11 +75,11 @@ namespace Mjolnir
 				tasks.Add(t);
 			}
 
-			await Task.WhenAll(tasks);
+			return (await Task.WhenAll(tasks)).ToList();
 		}
 
 		[FunctionName(nameof(HammerNail))]
-		public async Task HammerNail([ActivityTrigger] NailActivity activity, ILogger log)
+		public async Task<NailResult> HammerNail([ActivityTrigger] NailActivity activity, ILogger log)
 		{
 			log.LogInformation($"Hammering {activity.TargetUrl} - Attempt Number: {activity.NailId}");
 			
@@ -99,6 +106,12 @@ namespace Mjolnir
 
 					log.LogDebug(content.Substring(0, 255));
 				}
+
+				return new NailResult()
+				{
+					NailId = activity.NailId,
+					DurationMs = watch.Elapsed.TotalMilliseconds.ToString("##.000")
+				};
 			}
 		}
 	}
