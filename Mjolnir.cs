@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
@@ -11,27 +12,7 @@ using Newtonsoft.Json;
 
 namespace Mjolnir
 {
-	public class Nail
-	{
-		public string TargetUrl { get; set; }
-		public string Cookies { get; set; }
-		public int Attempts { get; set; }
-	}
-
-	public class NailActivity
-	{
-		public string TargetUrl { get; set; }
-		public string Cookies { get; set; }
-		public string NailId { get; set; }
-	}
-
-	public class NailResult
-	{
-		public string NailId { get; set; }
-		public string DurationMs { get; set; }
-	}
-
-	public class Mjolnir
+    public class Mjolnir
 	{
 		private readonly IHttpClientFactory _factory;
 
@@ -40,79 +21,56 @@ namespace Mjolnir
 			_factory = factory;
 		}
 
-		[FunctionName(nameof(Hammer))]
-		public async Task<HttpResponseMessage> Hammer(
-			[HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequestMessage req,
+        [FunctionName(nameof(GetTestOutput))]
+        public async Task<IActionResult> GetTestOutput(
+            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "GetTestOutput/{instanceId}")] HttpRequestMessage req,
+            string instanceId,
+            [OrchestrationClient]DurableOrchestrationClient durableClient,
+            ILogger log
+        )
+        {
+            log.LogInformation($"Getting test output for orchestration with ID = '{instanceId}'.");
+
+            DurableOrchestrationStatus status = await durableClient.GetStatusAsync(instanceId, true);
+            if (status?.RuntimeStatus == OrchestrationRuntimeStatus.Completed)
+            {
+                var res = status.Output.ToObject<NailResult[]>();
+                return new OkObjectResult(res);
+            }
+
+            return new OkObjectResult(status?.Output);
+        }
+
+        [FunctionName(nameof(ConcurrentHammer))]
+		public async Task<HttpResponseMessage> ConcurrentHammer(
+			[HttpTrigger(AuthorizationLevel.Function, "post", Route = "Hammer/AllAtOnce")] HttpRequestMessage req,
 			[OrchestrationClient]DurableOrchestrationClient durableClient,
 			ILogger log
 			)
 		{
 			string bodyJson = await req.Content.ReadAsStringAsync();
-			var nail = JsonConvert.DeserializeObject<Nail>(bodyJson);
+			var hammerNailRequest = JsonConvert.DeserializeObject<HammerNailRequest>(bodyJson);
 			
-			string instanceId = await durableClient.StartNewAsync(nameof(HammerAllNailsAtOnce), nail);
+			string instanceId = await durableClient.StartNewAsync(nameof(HammerAllNailsAtOnce), hammerNailRequest);
 
 			log.LogInformation($"Started orchestration with ID = '{instanceId}'.");
 			return durableClient.CreateCheckStatusResponse(req, instanceId);
 		}
 
-		[FunctionName(nameof(HammerAllNailsAtOnce))]
-		public async Task<List<NailResult>> HammerAllNailsAtOnce(
-			[OrchestrationTrigger] DurableOrchestrationContext context)
-		{
-			var nail = context.GetInput<Nail>();
-			var tasks = new List<Task<NailResult>>();
+        [FunctionName(nameof(SingleHammer))]
+        public async Task<HttpResponseMessage> SingleHammer(
+            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "Hammer/OneAtATime")] HttpRequestMessage req,
+            [OrchestrationClient]DurableOrchestrationClient durableClient,
+            ILogger log
+        )
+        {
+            string bodyJson = await req.Content.ReadAsStringAsync();
+            var hammerNailRequest = JsonConvert.DeserializeObject<HammerNailRequest>(bodyJson);
 
-			for (var n = 0; n < nail.Attempts; n++)
-			{
-				Task<NailResult> t = context.CallActivityAsync<NailResult>(nameof(HammerNail), new NailActivity()
-				{
-					TargetUrl = nail.TargetUrl,
-					Cookies = nail.Cookies,
-					NailId = n.ToString()
-				});
+            string instanceId = await durableClient.StartNewAsync(nameof(HammerAllNailsAtOnce), hammerNailRequest);
 
-				tasks.Add(t);
-			}
-
-			return (await Task.WhenAll(tasks)).ToList();
-		}
-
-		[FunctionName(nameof(HammerNail))]
-		public async Task<NailResult> HammerNail([ActivityTrigger] NailActivity activity, ILogger log)
-		{
-			log.LogInformation($"Hammering {activity.TargetUrl} - Attempt Number: {activity.NailId}");
-			
-			var targetUri = new Uri(activity.TargetUrl);
-			
-			using (HttpClient client = _factory.CreateClient())
-			{
-				var message = new HttpRequestMessage(HttpMethod.Get, targetUri);
-				message.Headers.Add("Cookie", activity.Cookies);
-
-				Stopwatch watch = Stopwatch.StartNew();
-				HttpResponseMessage resp = await client.SendAsync(message);
-				watch.Stop();
-
-				if (!resp.IsSuccessStatusCode)
-				{
-					log.LogError("Couldn't hammer url - {status}/{code} - {reason}. Duration: {duration}", resp.StatusCode, (int)resp.StatusCode, resp.ReasonPhrase, watch.Elapsed.TotalSeconds);
-				}
-				else
-				{
-					log.LogInformation("Hammering url took {duration}", watch.Elapsed.TotalSeconds);
-
-					string content = await resp.Content.ReadAsStringAsync();
-
-					log.LogDebug(content.Substring(0, 255));
-				}
-
-				return new NailResult()
-				{
-					NailId = activity.NailId,
-					DurationMs = watch.Elapsed.TotalMilliseconds.ToString("##.000")
-				};
-			}
-		}
-	}
+            log.LogInformation($"Started orchestration with ID = '{instanceId}'.");
+            return durableClient.CreateCheckStatusResponse(req, instanceId);
+        }
+    }
 }

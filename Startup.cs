@@ -10,6 +10,7 @@ namespace Mjolnir
 		public override void Configure(IFunctionsHostBuilder builder)
 		{
 			builder.Services.AddHttpClient();
+
 		}
 	}
 }
