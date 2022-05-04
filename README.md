@@ -1,5 +1,7 @@
 # Mjolnir
 
+> NOTE: Project is inactive. Instead, to run API load tests, check out https://k6.io and this awesome video from [Nick Chapsas](https://www.youtube.com/channel/UCrkPsvLGln62OMZRO6K-llg): [Getting started with API Load Testing (Stress, Spike, Load, Soak)](https://youtu.be/r-Jte8Y8zag)
+
 Mjolnir is a Azure Durable Functions app that can target a given URL with concurrent requests.
 
 I used it to quickly and easily generate a bunch of traffic on a site.
